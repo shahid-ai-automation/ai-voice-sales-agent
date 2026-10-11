@@ -22,7 +22,7 @@ def property_row(
     """Return a database row using the column order expected by main.smart_match."""
     return (
         property_id,          # property_id
-        f"LIST-{property_id}",# listing_id
+        f"LIST-{property_id}", # listing_id
         listing_type,         # listing_type
         community,            # community
         "Marina Tower",       # building
@@ -95,6 +95,9 @@ def request_payload(**overrides):
 
 
 def install_fake_database(monkeypatch, rows):
+    # The endpoint checks this setting before calling psycopg.connect.
+    # Use a dummy value and replace the actual connection with a fake.
+    monkeypatch.setenv("DATABASE_URL", "postgresql://test:test@localhost/test")
     monkeypatch.setattr(
         main.psycopg,
         "connect",
