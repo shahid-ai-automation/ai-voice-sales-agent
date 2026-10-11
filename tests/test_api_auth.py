@@ -1,5 +1,3 @@
-import os
-
 import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
@@ -24,6 +22,15 @@ def client():
 
 def test_missing_api_key_configuration_returns_503(client, monkeypatch):
     monkeypatch.delenv("API_KEY", raising=False)
+
+    response = client.get("/protected")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "API authentication is not configured."
+
+
+def test_empty_api_key_configuration_returns_503(client, monkeypatch):
+    monkeypatch.setenv("API_KEY", "")
 
     response = client.get("/protected")
 
