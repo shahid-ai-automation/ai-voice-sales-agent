@@ -212,3 +212,111 @@ def test_missing_required_input_returns_422(client):
     response = post_smart_match(client, payload)
 
     assert response.status_code == 422
+
+
+def test_slightly_over_budget_preferred_property_is_labeled_clearly(
+    client, monkeypatch
+):
+    install_fake_database(
+        monkeypatch,
+        [property_row(price=1_040_000)],
+    )
+
+    response = post_smart_match(
+        client,
+        request_payload(
+            budget=1_000_000,
+            budget_priority="preferred",
+        ),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["match_count"] == 1
+
+    match = body["matches"][0]
+    assert match["price"] == 1_040_000
+    assert "Slightly above target budget" in match["match_reasons"]
+
+
+def test_only_top_three_matches_are_returned_in_score_order(
+    client, monkeypatch
+):
+    rows = [
+        property_row(property_id="PROP-LOW", price=1_100_000),
+        property_row(property_id="PROP-MID1", price=1_300_000),
+        property_row(property_id="PROP-MID2", price=1_500_000),
+        property_row(property_id="PROP-HIGH", price=1_700_000),
+    ]
+    install_fake_database(monkeypatch, rows)
+
+    response = post_smart_match(client, request_payload())
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["match_count"] == 3
+    assert len(body["matches"]) == 3
+
+    scores = [item["match_score"] for item in body["matches"]]
+    assert scores == sorted(scores, reverse=True)
+    returned_ids = {item["property_id"] for item in body["matches"]}
+    assert "PROP-HIGH" not in returned_ids
+
+
+def test_investment_matching_considers_price_per_square_foot(
+    client, monkeypatch
+):
+    rows = [
+        property_row(property_id="PROP-LOW-PSF", price_per_sqft=1000),
+        property_row(property_id="PROP-MID-PSF", price_per_sqft=1250),
+        property_row(property_id="PROP-HIGH-PSF", price_per_sqft=1500),
+    ]
+    install_fake_database(monkeypatch, rows)
+
+    response = post_smart_match(
+        client,
+        request_payload(purpose="invest"),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["match_count"] == 3
+
+    lowest_cost_match = body["matches"][0]
+    assert lowest_cost_match["property_id"] == "PROP-LOW-PSF"
+    assert (
+        "Competitive price per square foot"
+        in lowest_cost_match["match_reasons"]
+    )
+    assert (
+        "Competitive investment price per square foot"
+        in lowest_cost_match["match_reasons"]
+    )
+
+
+def test_inferred_requirement_cannot_be_required(client, monkeypatch):
+    def unexpected_database_call(*_args, **_kwargs):
+        pytest.fail("Database should not be accessed for invalid requirements")
+
+    monkeypatch.setattr(main.psycopg, "connect", unexpected_database_call)
+
+    payload = {
+        "purpose": "buy",
+        "listing_type": "sale",
+        "requirements": {
+            "community": {
+                "value": "Dubai Marina",
+                "priority": "required",
+                "source": "inferred",
+            }
+        },
+    }
+
+    response = client.post(
+        "/properties/smart-match",
+        json=payload,
+        headers={"X-API-Key": API_KEY},
+    )
+
+    assert response.status_code == 400
+    assert "cannot use priority 'required'" in response.json()["detail"]
