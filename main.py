@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query, Request, HTTPException
+from fastapi import FastAPI, Query, Request, HTTPException, Header, Depends
 from datetime import datetime, timedelta
 from fastapi.responses import RedirectResponse
 from dotenv import load_dotenv
@@ -6,6 +6,7 @@ from typing import Optional, Dict, Any
 from pydantic import BaseModel
 
 import os
+import secrets
 import json
 import psycopg
 import base64
@@ -20,6 +21,25 @@ load_dotenv()
 
 app = FastAPI()
 
+
+def require_api_key(
+    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key")
+):
+    expected_key = os.getenv("API_KEY")
+
+    if not expected_key:
+        raise HTTPException(
+            status_code=503,
+            detail="API authentication is not configured."
+        )
+
+    if not x_api_key or not secrets.compare_digest(x_api_key, expected_key):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing API key."
+        )
+
+
 class Requirement(BaseModel):
     value: Any
     priority: str
@@ -31,7 +51,7 @@ class SmartMatchRequest(BaseModel):
     listing_type: str
     requirements: Dict[str, Requirement]
 
-@app.post("/properties/smart-match")
+@app.post("/properties/smart-match", dependencies=[Depends(require_api_key)])
 def smart_match(request: SmartMatchRequest):
 
     # ---------------------------------------------------------
@@ -997,7 +1017,7 @@ class SmartMatchBuilderRequest(BaseModel):
     budget_priority: str
 
 
-@app.post("/properties/smart-match-builder")
+@app.post("/properties/smart-match-builder", dependencies=[Depends(require_api_key)])
 def smart_match_builder(request: SmartMatchBuilderRequest):
 
     smart_request = SmartMatchRequest(
@@ -1035,7 +1055,7 @@ def home():
     }
 
 
-@app.get("/db-test")
+@app.get("/db-test", dependencies=[Depends(require_api_key)])
 def db_test():
     database_url = os.getenv("DATABASE_URL")
 
@@ -1054,7 +1074,7 @@ def db_test():
     }
 
 
-@app.get("/properties/search")
+@app.get("/properties/search", dependencies=[Depends(require_api_key)])
 def search_properties(
     community: str = Query(...),
     property_type: str = Query(...),
@@ -1200,7 +1220,7 @@ def oauth2callback(request: Request):
         }
 
 
-@app.get("/calendar-test")
+@app.get("/calendar-test", dependencies=[Depends(require_api_key)])
 def calendar_test():
     credentials = Credentials.from_authorized_user_file(
         "token.json",
@@ -1244,7 +1264,7 @@ class CheckAvailabilityRequest(BaseModel):
     requested_date: str
     requested_time: str
 
-@app.post("/availability/check")
+@app.post("/availability/check", dependencies=[Depends(require_api_key)])
 def check_availability(request: CheckAvailabilityRequest):
     # 1. Read parameters from the JSON request body
     property_id = request.property_id
@@ -1399,7 +1419,7 @@ class NotifyAgentRequest(BaseModel):
     requested_time: str
     purpose: str
 
-@app.post("/availability/book")
+@app.post("/availability/book", dependencies=[Depends(require_api_key)])
 def book_viewing(request: BookViewingRequest):
     property_id = request.property_id
     requested_date = request.requested_date
@@ -1581,7 +1601,7 @@ def book_viewing(request: BookViewingRequest):
         )
     }
 
-@app.get("/gmail-test")
+@app.get("/gmail-test", dependencies=[Depends(require_api_key)])
 def gmail_test():
     service = get_gmail_service()
 
@@ -1652,7 +1672,7 @@ Viewing Time: {requested_time}
         "agent_id": agent_id
     }
 
-@app.post("/notify-agent")
+@app.post("/notify-agent", dependencies=[Depends(require_api_key)])
 def notify_agent(request: NotifyAgentRequest):
     return send_agent_notification(
         property_id=request.property_id,
