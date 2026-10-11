@@ -23,3 +23,6 @@ credentials*.json
 # OS files
 .DS_Store
 Thumbs.db
+# Google service-account credentials
+service-account*.json
+*-service-account*.json
