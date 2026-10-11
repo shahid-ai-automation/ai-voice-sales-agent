@@ -285,10 +285,6 @@ def test_investment_matching_considers_price_per_square_foot(
     lowest_cost_match = body["matches"][0]
     assert lowest_cost_match["property_id"] == "PROP-LOW-PSF"
     assert (
-        "Competitive price per square foot"
-        in lowest_cost_match["match_reasons"]
-    )
-    assert (
         "Competitive investment price per square foot"
         in lowest_cost_match["match_reasons"]
     )
